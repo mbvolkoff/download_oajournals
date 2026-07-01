@@ -1,0 +1,9 @@
+[project]
+name = "download-oajournals"
+version = "0.1.0"
+description = "Download open access journals from PubMed Central by DOI"
+requires-python = ">=3.10"
+dependencies = [
+    "requests",
+    "tqdm",
+]
