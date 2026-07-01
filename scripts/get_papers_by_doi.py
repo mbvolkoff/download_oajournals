@@ -1,4 +1,11 @@
 ### MININAL PYTHON VERSION REQUIRED IS 3.10 !!!
+# /// script
+# requires-python = ">=3.10"
+# dependencies = [
+#     "requests",
+#     "tqdm",
+# ]
+# ///
 import requests
 import re
 import os
@@ -6,7 +13,6 @@ import time
 import argparse
 import logging
 from tqdm import tqdm
-from ftplib import FTP
 from typing import Callable, List
 logging.basicConfig(
     filename='get_by_doi.log', 
@@ -23,29 +29,24 @@ def add_api_key(api_key: str | None) -> Callable[[str], str]:
     return attach_api_key
 
 def download_via_ftp(href_url: str) -> None:
-    ftp_server = 'ftp.ncbi.nlm.nih.gov'
+    # NCBI moved the OA bulk files under /pub/pmc/deprecated/ and dropped FTP
+    # access in favor of HTTPS, but oa.fcgi still returns the old ftp:// path.
+    download_url = href_url.replace(
+        'ftp://ftp.ncbi.nlm.nih.gov/pub/pmc/',
+        'https://ftp.ncbi.nlm.nih.gov/pub/pmc/deprecated/',
+        )
 
-    _, pmc_file = os.path.split(href_url)
-    
-    file_path = href_url.replace('ftp://'+ftp_server, '')
-    local_file_path = pmc_file
-    
-    # Connect to the FTP server
-    ftp = FTP(ftp_server)
-    ftp.login()
-    
-    # Open a local file for writing in binary mode
+    _, local_file_path = os.path.split(download_url)
+
+    response = requests.get(download_url, stream=True)
+    if response.status_code != 200:
+        logging.error(f"Failed to download {download_url}: HTTP {response.status_code}")
+        return
+
     with open(local_file_path, 'wb') as local_file:
-        # Define the callback function for writing data chunks
-        def write_chunk(chunk):
+        for chunk in response.iter_content(chunk_size=8192):
             local_file.write(chunk)
-    
-        # Use retrbinary command to download the file
-        ftp.retrbinary(f'RETR {file_path}', write_chunk)
-    
-    # Close the FTP connection
-    ftp.quit()
-    
+
     logging.info(f"File downloaded successfully to {local_file_path}")
 
 def get_publication_by_pmc_id(pmc_id: str, api_key: str = None) -> None:
@@ -127,7 +128,7 @@ def read_file(fname: str) -> List[str]:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Download papers from PubMed Central by DOI")
     parser.add_argument("doi", type=str, help="DOIs to download or file with DOIs line by line")
-    parser.add_argument("--api_key", type=str, help="NCBI API key")
+    parser.add_argument("--api_key", type=str, default=os.environ.get("NCBI_API_KEY"), help="NCBI API key (defaults to NCBI_API_KEY env var)")
     parser.add_argument("--wait", type=float, default=0.33, help="Time to wait between requests")
     args = parser.parse_args()
 
